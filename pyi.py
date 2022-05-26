@@ -528,7 +528,7 @@ def _has_bad_hardcoded_returns(
         )
 
     if method_name in _INPLACE_BINOP_METHODS:
-        return returns is not None and not _is_Self(returns)
+        return _is_Self(returns)
 
     if _is_name(returns, classdef.name):
         return method_name in {"__enter__", "__new__"} and not _is_decorated_with_final(
@@ -778,9 +778,6 @@ class PyiVisitor(ast.NodeVisitor):
         If they are private, they should be used at least once in the file in which they are defined.
         """
         cls_name = _get_name_of_class_if_from_modules(function, modules=_TYPING_MODULES)
-
-        if cls_name is None:
-            return
 
         if cls_name in {"TypeVar", "ParamSpec", "TypeVarTuple"}:
             if object_name.startswith("_"):
@@ -1438,8 +1435,6 @@ class PyiVisitor(ast.NodeVisitor):
     ) -> None:
         if not isinstance(first_arg_annotation, ast.Subscript):
             return
-
-        cls_typevar: str
 
         if isinstance(first_arg_annotation.slice, ast.Name):
             cls_typevar = first_arg_annotation.slice.id
