@@ -326,7 +326,6 @@ _is_TypeAlias = partial(_is_object, name="TypeAlias", from_=_TYPING_MODULES)
 _is_NamedTuple = partial(_is_object, name="NamedTuple", from_={"typing"})
 _is_TypedDict = partial(_is_object, name="TypedDict", from_=_TYPING_MODULES)
 _is_Literal = partial(_is_object, name="Literal", from_=_TYPING_MODULES)
-_is_Union = partial(_is_object, name="Union", from_={"typing"})
 _is_abstractmethod = partial(_is_object, name="abstractmethod", from_={"abc"})
 _is_Any = partial(_is_object, name="Any", from_={"typing"})
 _is_overload = partial(_is_object, name="overload", from_={"typing"})
@@ -364,6 +363,12 @@ def _get_name_of_class_if_from_modules(
     ):
         return classnode.attr
     return None
+
+
+_get_name_of_class_if_from_typing = partial(
+    _get_name_of_class_if_from_modules, 
+    modules=_TYPING_MODULES
+)
 
 
 def _is_type_or_Type(node: ast.expr) -> bool:
@@ -777,7 +782,7 @@ class PyiVisitor(ast.NodeVisitor):
         TypeVars should usually be private.
         If they are private, they should be used at least once in the file in which they are defined.
         """
-        cls_name = _get_name_of_class_if_from_modules(function, modules=_TYPING_MODULES)
+        cls_name = _get_name_of_class_if_from_typing(function)
 
         if cls_name in {"TypeVar", "ParamSpec", "TypeVarTuple"}:
             if object_name.startswith("_"):
@@ -860,8 +865,8 @@ class PyiVisitor(ast.NodeVisitor):
             return self.error(node, Y026)
         if not isinstance(assignment, ast.Subscript):
             return
-        subscripted_object = assignment.value
-        if _is_Union(subscripted_object) or _is_Literal(subscripted_object):
+        subscripted_object_name = _get_name_of_class_if_from_typing(assignment.value)
+        if subscripted_object_name in {"Union", "Literal"}:
             self.error(node, Y026)
 
     def visit_Name(self, node: ast.Name) -> None:
@@ -1033,9 +1038,7 @@ class PyiVisitor(ast.NodeVisitor):
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
         subscripted_object = node.value
-        subscripted_object_name = _get_name_of_class_if_from_modules(
-            subscripted_object, modules=_TYPING_MODULES
-        )
+        subscripted_object_name = _get_name_of_class_if_from_typing(subscripted_object)
         self.visit(subscripted_object)
         if subscripted_object_name == "Literal":
             with self.string_literals_allowed.enabled():
