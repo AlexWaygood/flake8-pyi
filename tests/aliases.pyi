@@ -1,6 +1,7 @@
 import typing
 from typing import (  # Y037 Use PEP 604 union types instead of typing.Union (e.g. "int | str" instead of "Union[int, str]").
     ParamSpec as _ParamSpec,
+    Optional,
     TypeAlias,
     TypedDict,
     Union,
@@ -10,6 +11,7 @@ from typing import (  # Y037 Use PEP 604 union types instead of typing.Union (e.
 import typing_extensions
 from typing_extensions import Literal
 
+T = Optional[int]  # Y026 Use typing_extensions.TypeAlias for type aliases
 U = typing.Literal["ham", "bacon"]  # Y026 Use typing_extensions.TypeAlias for type aliases
 V = Literal["spam", "eggs"]  # Y026 Use typing_extensions.TypeAlias for type aliases
 X = typing_extensions.Literal["foo", "bar"]  # Y026 Use typing_extensions.TypeAlias for type aliases
@@ -24,6 +26,7 @@ E: TypeAlias = Union[str, bytes]
 F: TypeAlias = int
 G: typing.TypeAlias = int
 H: typing_extensions.TypeAlias = int
+I: TypeAlias = Optional[int]
 
 a = b = int  # Y017 Only simple assignments allowed
 a.b = int  # Y017 Only simple assignments allowed
