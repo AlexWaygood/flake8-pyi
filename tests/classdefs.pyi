@@ -2,6 +2,7 @@ import abc
 import builtins
 import collections.abc
 import typing
+import typing_extensions
 from abc import abstractmethod
 from collections.abc import AsyncIterator, Iterator
 from typing import Any, overload
@@ -34,7 +35,7 @@ class Good:
     def __ior__(self: Self, other: Self) -> Self: ...
 
 class Fine:
-    @overload
+    @typing_extensions.overload
     def __new__(cls, foo: int) -> FineSubclass: ...
     @overload
     def __new__(cls, *args: Any, **kwargs: Any) -> Fine: ...
