@@ -866,7 +866,7 @@ class PyiVisitor(ast.NodeVisitor):
         if not isinstance(assignment, ast.Subscript):
             return
         subscripted_object_name = _get_name_of_class_if_from_typing(assignment.value)
-        if subscripted_object_name in {"Union", "Literal"}:
+        if subscripted_object_name in {"Union", "Literal", "Optional"}:
             self.error(node, Y026)
 
     def visit_Name(self, node: ast.Name) -> None:
