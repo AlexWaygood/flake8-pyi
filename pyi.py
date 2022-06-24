@@ -619,6 +619,7 @@ class PyiVisitor(ast.NodeVisitor):
         self.in_function = NestingCounter()
         self.in_class = NestingCounter()
         self.visiting_TypeAlias = NestingCounter()
+        self.visiting_arg_annotation = NestingCounter()
         # This is only relevant for visiting classes
         self.current_class_node: ast.ClassDef | None = None
 
@@ -1066,7 +1067,11 @@ class PyiVisitor(ast.NodeVisitor):
                 self.visit(node)
         elif parent == "Callable":
             self.visit(node)
-            if len(node.elts) == 2 and _is_None(node.elts[1]):
+            if (
+                (self.visiting_TypeAlias.active or self.visiting_arg_annotation.active)
+                and len(node.elts) == 2
+                and _is_None(node.elts[1])
+            ):
                 self.error(node, Y044)
         else:
             self.visit(node)
@@ -1513,6 +1518,12 @@ class PyiVisitor(ast.NodeVisitor):
         if self.in_class.active:
             self.check_self_typevars(node)
 
+    def visit_arg(self, node: ast.arg) -> None:
+        annotation = node.annotation
+        if annotation is not None:
+            with self.visiting_arg_annotation.enabled():
+                self.visit(annotation)
+
     def visit_arguments(self, node: ast.arguments) -> None:
         self.generic_visit(node)
         args = node.args[-len(node.defaults) :]
@@ -1674,4 +1685,4 @@ Y039 = 'Y039 Use "str" instead of "typing.Text"'
 Y040 = 'Y040 Do not inherit from "object" explicitly, as it is redundant in Python 3'
 Y041 = 'Y041 Use "{implicit_supertype}" instead of "{implicit_subtype} | {implicit_supertype}" (see "The numeric tower" in PEP 484)'
 Y043 = 'Y043 Bad name for a type alias (the "T" suffix implies a TypeVar)'
-Y044 = 'Y044 Bad Callable'
+Y044 = "Y044 Bad Callable"
