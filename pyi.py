@@ -338,6 +338,7 @@ _is_Final = partial(_is_object, name="Final", from_=_TYPING_MODULES)
 _is_Self = partial(_is_object, name="Self", from_=({"_typeshed"} | _TYPING_MODULES))
 _is_TracebackType = partial(_is_object, name="TracebackType", from_={"types"})
 _is_builtins_object = partial(_is_object, name="object", from_={"builtins"})
+_is_Protocol = partial(_is_object, name="Protocol", from_=_TYPING_MODULES)
 
 
 def _get_name_of_class_if_from_modules(
@@ -1037,7 +1038,7 @@ class PyiVisitor(ast.NodeVisitor):
     def visit_Subscript(self, node: ast.Subscript) -> None:
         subscripted_object = node.value
         subscripted_object_name = _get_name_of_class_if_from_modules(
-            subscripted_object, modules=_TYPING_MODULES
+            subscripted_object, modules=_TYPING_MODULES | {"collections.abc"}
         )
         self.visit(subscripted_object)
         if subscripted_object_name == "Literal":
@@ -1063,6 +1064,10 @@ class PyiVisitor(ast.NodeVisitor):
                         self.visit(elt)
             else:
                 self.visit(node)
+        elif parent == "Callable":
+            self.visit(node)
+            if len(node.elts) == 2 and _is_None(node.elts[1]):
+                self.error(node, Y044)
         else:
             self.visit(node)
 
@@ -1669,3 +1674,4 @@ Y039 = 'Y039 Use "str" instead of "typing.Text"'
 Y040 = 'Y040 Do not inherit from "object" explicitly, as it is redundant in Python 3'
 Y041 = 'Y041 Use "{implicit_supertype}" instead of "{implicit_subtype} | {implicit_supertype}" (see "The numeric tower" in PEP 484)'
 Y043 = 'Y043 Bad name for a type alias (the "T" suffix implies a TypeVar)'
+Y044 = 'Y044 Bad Callable'
