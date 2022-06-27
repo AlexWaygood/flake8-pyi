@@ -397,7 +397,7 @@ def _is_PEP_604_union(node: ast.expr | None) -> TypeGuard[ast.BinOp]:
     return isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr)
 
 
-def _is_None(node: ast.expr) -> bool:
+def _is_None(node: ast.expr | None) -> bool:
     # <=3.7: `BaseException | None` parses as BinOp(left=Name(id='BaseException'), op=BitOr(), right=NameConstant(value=None))`
     # >=3.8: `BaseException | None` parses as BinOp(left=Name(id='BaseException'), op=BitOr(), right=Constant(value=None))`
     # ast.NameConstant is deprecated in 3.8+, but doesn't raise a DeprecationWarning (and the isinstance() check still works)
@@ -620,6 +620,7 @@ class PyiVisitor(ast.NodeVisitor):
         self.in_class = NestingCounter()
         self.visiting_TypeAlias = NestingCounter()
         self.visiting_arg_annotation = NestingCounter()
+        self.visiting_Protocol_class = NestingCounter()
         # This is only relevant for visiting classes
         self.current_class_node: ast.ClassDef | None = None
 
@@ -1068,11 +1069,13 @@ class PyiVisitor(ast.NodeVisitor):
         elif parent == "Callable":
             self.visit(node)
             if (
-                (self.visiting_TypeAlias.active or self.visiting_arg_annotation.active)
-                and len(node.elts) == 2
-                and _is_None(node.elts[1])
-            ):
-                self.error(node, Y044)
+                self.visiting_TypeAlias.active or self.visiting_arg_annotation.active
+            ) and len(node.elts) == 2:
+                return_annotation = node.elts[1]
+                if _is_None(return_annotation):
+                    self.error(node, Y044.format(problem="None"))
+                elif _is_Any(return_annotation):
+                    self.error(node, Y044.format(problem="Any"))
         else:
             self.visit(node)
 
@@ -1204,7 +1207,11 @@ class PyiVisitor(ast.NodeVisitor):
         old_class_node = self.current_class_node
         self.current_class_node = node
         with self.in_class.enabled():
-            self.generic_visit(node)
+            if any(_is_Protocol(base) for base in node.bases):
+                with self.visiting_Protocol_class.enabled():
+                    self.generic_visit(node)
+            else:
+                self.generic_visit(node)
         self.current_class_node = old_class_node
 
         if any(_is_builtins_object(base_node) for base_node in node.bases):
@@ -1247,6 +1254,7 @@ class PyiVisitor(ast.NodeVisitor):
                 varargs_annotation = varargs.annotation
                 if not (
                     varargs_annotation is None
+                    or self.visiting_Protocol_class.active
                     or _is_builtins_object(varargs_annotation)
                 ):
                     error_for_bad_exit_method(
@@ -1366,6 +1374,21 @@ class PyiVisitor(ast.NodeVisitor):
 
         if _has_bad_hardcoded_returns(node, classdef=classdef):
             return self._Y034_error(node=node, cls_name=classdef.name)
+
+        if method_name == "__call__":
+            if self.visiting_Protocol_class.active:
+                returns = node.returns
+                if _is_None(returns):
+                    self.error(
+                        node,
+                        Y045.format(problem="None returned from a callback protocol"),
+                    )
+                elif _is_Any(returns):
+                    self.error(
+                        node,
+                        Y045.format(problem="Any returned from a callback protocol"),
+                    )
+            return
 
         if method_name in {"__exit__", "__aexit__"}:
             return self._check_exit_method(node=node, method_name=method_name)
@@ -1534,6 +1557,19 @@ class PyiVisitor(ast.NodeVisitor):
                 continue  # keyword-only arg without a default
             if not isinstance(default, ast.Ellipsis):
                 self.error(default, (Y014 if arg.annotation is None else Y011))
+        if self.visiting_Protocol_class.active:
+            vararg, kwarg = node.vararg, node.kwarg
+            if vararg is not None:
+                if _is_builtins_object(vararg.annotation):
+                    self.error(
+                        node, Y045.format(problem="object annotation for a star-arg")
+                    )
+            if kwarg is not None:
+                if _is_builtins_object(kwarg.annotation):
+                    self.error(
+                        node,
+                        Y045.format(problem="object annotation for a star-star-arg"),
+                    )
 
     def _Y015_error(self, node: ast.Assign | ast.AnnAssign) -> None:
         old_syntax = unparse(node)
@@ -1685,4 +1721,5 @@ Y039 = 'Y039 Use "str" instead of "typing.Text"'
 Y040 = 'Y040 Do not inherit from "object" explicitly, as it is redundant in Python 3'
 Y041 = 'Y041 Use "{implicit_supertype}" instead of "{implicit_subtype} | {implicit_supertype}" (see "The numeric tower" in PEP 484)'
 Y043 = 'Y043 Bad name for a type alias (the "T" suffix implies a TypeVar)'
-Y044 = "Y044 Bad Callable"
+Y044 = "Y044 Bad Callable: {problem}"
+Y045 = "Y045 Bad Protocol method: {problem}"
