@@ -20,10 +20,8 @@ from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
 
 from flake8 import checker  # type: ignore[import]
 from flake8.options.manager import OptionManager  # type: ignore[import]
-from flake8.plugins.manager import Plugin  # type: ignore[import]
 from flake8.plugins.pyflakes import FlakesChecker  # type: ignore[import]
 from pyflakes.checker import (
-    PY2,
     ClassDefinition,
     ClassScope,
     FunctionScope,
@@ -223,9 +221,8 @@ class PyiAwareFlakesChecker(FlakesChecker):
             self.handleNode(decorator, node)
         for baseNode in node.bases:
             self.deferHandleNode(baseNode, node)
-        if not PY2:
-            for keywordNode in node.keywords:
-                self.deferHandleNode(keywordNode, node)
+        for keywordNode in node.keywords:
+            self.deferHandleNode(keywordNode, node)
         self.pushScope(ClassScope)
         # doctest does not process doctest within a doctest
         # classes within classes are processed.
@@ -249,7 +246,7 @@ class PyiAwareFlakesChecker(FlakesChecker):
 
 
 class PyiAwareFileChecker(checker.FileChecker):
-    def run_check(self, plugin: Plugin, **kwargs: Any) -> Any:
+    def run_check(self, plugin, **kwargs: Any) -> Any:
         if self.filename == "-":
             filename = self.options.stdin_display_name
         else:
