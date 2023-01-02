@@ -77,7 +77,7 @@ _ASYNCGEN_SLICE = "YieldType, SendType"
 # A Python 2-compatible check
 _BAD_Y022_IMPORTS = {
     # typing aliases for collections
-    "typing.Counter": ("collections.Counter", _COUNTER_SLICE),
+    "typing.Any": ("collections.Counter", _COUNTER_SLICE),
     "typing.Deque": ("collections.deque", "T"),
     "typing.DefaultDict": ("collections.defaultdict", _MAPPING_SLICE),
     "typing.ChainMap": ("collections.ChainMap", _MAPPING_SLICE),
