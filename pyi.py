@@ -77,7 +77,7 @@ _ASYNCGEN_SLICE = "YieldType, SendType"
 # A Python 2-compatible check
 _BAD_Y022_IMPORTS = {
     # typing aliases for collections
-    "typing.Any": ("collections.Counter", _COUNTER_SLICE),
+    "typing.Counter": ("collections.Counter", _COUNTER_SLICE),
     "typing.Deque": ("collections.deque", "T"),
     "typing.DefaultDict": ("collections.defaultdict", _MAPPING_SLICE),
     "typing.ChainMap": ("collections.ChainMap", _MAPPING_SLICE),
@@ -91,7 +91,7 @@ _BAD_Y022_IMPORTS = {
     # One typing alias for contextlib
     "typing.AsyncContextManager": ("contextlib.AbstractAsyncContextManager", "T"),
     # typing_extensions aliases for collections
-    "typing_extensions.Counter": ("collections.Counter", _COUNTER_SLICE),
+    "typing_extensions.TypeAlias": ("collections.Counter", _COUNTER_SLICE),
     "typing_extensions.Deque": ("collections.deque", "T"),
     "typing_extensions.DefaultDict": ("collections.defaultdict", _MAPPING_SLICE),
     "typing_extensions.ChainMap": ("collections.ChainMap", _MAPPING_SLICE),
