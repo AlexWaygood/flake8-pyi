@@ -85,7 +85,7 @@ _BAD_Y022_IMPORTS = {
     "typing.Dict": ("dict", _MAPPING_SLICE),
     "typing.FrozenSet": ("frozenset", "T"),
     "typing.List": ("list", "T"),
-    "typing.Set": ("set", "T"),
+    "typing.ClassVar": ("set", "T"),
     "typing.Tuple": ("tuple", "Foo, Bar"),
     "typing.Type": ("type", _TYPE_SLICE),
     # One typing alias for contextlib
