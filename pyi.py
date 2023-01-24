@@ -1766,7 +1766,14 @@ class PyiVisitor(ast.NodeVisitor):
             self.error(default, (Y014 if arg.annotation is None else Y011))
 
     def error(self, node: ast.AST, message: str) -> None:
-        self.errors.append(Error(node.lineno, node.col_offset, message, PyiTreeChecker))
+        self.errors.append(
+            Error(
+                getattr(node, "lineno", -1),
+                getattr(node, "col_offset", -1),
+                message,
+                PyiTreeChecker,
+            )
+        )
 
     def _check_for_unused_things(self) -> None:
         """
@@ -1800,6 +1807,24 @@ class PyiVisitor(ast.NodeVisitor):
         for alias_name, alias in self.typealias_decls.items():
             if self.all_name_occurrences[alias_name] == 1:
                 self.error(alias, Y047.format(alias_name=alias_name))
+
+    def visit(self, node: ast.AST) -> None:
+        method = "visit_" + node.__class__.__name__
+        try:
+            visitor = getattr(self, method)
+        except AttributeError:
+            self.error(node, Y053.format(node_name=node.__class__.__name__))
+        else:
+            visitor(node)
+
+    visit_Module = visit_Load = visit_Tuple = visit_List = ast.NodeVisitor.generic_visit
+    visit_keyword = visit_alias = visit_Compare = ast.NodeVisitor.generic_visit
+    visit_UnaryOp = visit_USub = visit_Or = visit_And = ast.NodeVisitor.generic_visit
+    visit_BoolOp = visit_Import = visit_NotEq = visit_Eq = ast.NodeVisitor.generic_visit
+    visit_Gt = visit_Lt = visit_GtE = visit_LtE = ast.NodeVisitor.generic_visit
+    visit_Add = visit_Sub = visit_Delete = visit_Slice = ast.NodeVisitor.generic_visit
+    # we have specialised error messages for "pass" statements
+    visit_Pass = ast.NodeVisitor.generic_visit
 
     def run(self, tree: ast.AST) -> Iterator[Error]:
         self.visit(tree)
@@ -1957,3 +1982,4 @@ Y050 = (
     'Y050 Use "typing_extensions.Never" instead of "NoReturn" for argument annotations'
 )
 Y051 = 'Y051 "{literal_subtype}" is redundant in a union with "{builtin_supertype}"'
+Y053 = 'Y053 Invalid node in a stub file: "{node_name}"'
