@@ -848,6 +848,8 @@ class NestingCounter:
 
 
 class PyiVisitor(ast.NodeVisitor):
+    current_classdef: ast.ClassDef  # only set when we're visiting a class
+
     def __init__(self, filename: str) -> None:
         self.filename = filename
         self.errors: list[Error] = []
@@ -866,13 +868,14 @@ class PyiVisitor(ast.NodeVisitor):
         self.all_name_occurrences: Counter[str] = Counter()
         self.string_literals_allowed = NestingCounter()
         self.in_function = NestingCounter()
-        self.in_class = NestingCounter()
         self.visiting_arg = NestingCounter()
-        # This is only relevant for visiting classes
-        self.current_class_node: ast.ClassDef | None = None
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(filename={self.filename!r})"
+
+    @property
+    def visiting_class(self) -> bool:
+        return hasattr(self, "current_classdef")
 
     def _check_import_or_attribute(
         self, node: ast.Attribute | ast.ImportFrom, module_name: str, object_name: str
@@ -989,9 +992,8 @@ class PyiVisitor(ast.NodeVisitor):
             return
         if _is_valid_default_value_with_annotation(assignment):
             # Annoying special-casing to exclude enums from Y052
-            if self.in_class.active:
-                assert self.current_class_node is not None
-                if not _is_enum_class(self.current_class_node):
+            if self.visiting_class:
+                if not _is_enum_class(self.current_classdef):
                     self.error(node, Y052.format(variable=target_name))
             else:
                 self.error(node, Y052.format(variable=target_name))
@@ -1014,7 +1016,7 @@ class PyiVisitor(ast.NodeVisitor):
             self.error(node, Y017)
             target = target_name = None
         is_special_assignment = _is_assignment_which_must_have_a_value(
-            target_name, in_class=self.in_class.active
+            target_name, in_class=self.visiting_class
         )
         assignment = node.value
         if isinstance(assignment, ast.Call):
@@ -1187,7 +1189,7 @@ class PyiVisitor(ast.NodeVisitor):
         is_special_assignment = isinstance(
             node_target, ast.Name
         ) and _is_assignment_which_must_have_a_value(
-            node_target.id, in_class=self.in_class.active
+            node_target.id, in_class=self.visiting_class
         )
 
         is_typealias = _is_TypeAlias(node_annotation) and isinstance(
@@ -1504,7 +1506,7 @@ class PyiVisitor(ast.NodeVisitor):
             self.error(node, Y007)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        if node.name.startswith("_") and not self.in_class.active:
+        if node.name.startswith("_") and not self.visiting_class:
             for base in node.bases:
                 if _is_Protocol(base):
                     self.protocol_defs.append(node)
@@ -1513,11 +1515,13 @@ class PyiVisitor(ast.NodeVisitor):
                     self.class_based_typeddicts.append(node)
                     break
 
-        old_class_node = self.current_class_node
-        self.current_class_node = node
-        with self.in_class.enabled():
-            self.generic_visit(node)
-        self.current_class_node = old_class_node
+        old_classdef: ast.ClassDef | None = getattr(self, "current_classdef", None)
+        self.current_classdef = node
+        self.generic_visit(node)
+        if old_classdef is None:
+            del self.current_classdef
+        else:
+            self.current_classdef = old_classdef
 
         if any(_is_builtins_object(base_node) for base_node in node.bases):
             self.error(node, Y040)
@@ -1693,8 +1697,7 @@ class PyiVisitor(ast.NodeVisitor):
     def _visit_synchronous_method(self, node: ast.FunctionDef) -> None:
         method_name = node.name
         all_args = node.args
-        classdef = self.current_class_node
-        assert classdef is not None
+        classdef = self.current_classdef
 
         if _has_bad_hardcoded_returns(node, classdef=classdef):
             return self._Y034_error(node=node, cls_name=classdef.name)
@@ -1731,14 +1734,13 @@ class PyiVisitor(ast.NodeVisitor):
                 self.error(node, Y032.format(method_name=method_name))
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        if self.in_class.active:
+        if self.visiting_class:
             self._visit_synchronous_method(node)
         self._visit_function(node)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        if self.in_class.active:
-            classdef = self.current_class_node
-            assert classdef is not None
+        if self.visiting_class:
+            classdef = self.current_classdef
             method_name = node.name
             if _has_bad_hardcoded_returns(node, classdef=classdef):
                 self._Y034_error(node=node, cls_name=classdef.name)
@@ -1860,7 +1862,7 @@ class PyiVisitor(ast.NodeVisitor):
             ):
                 self.error(statement, Y010)
 
-        if self.in_class.active:
+        if self.visiting_class:
             self.check_self_typevars(node)
 
     def visit_arg(self, node: ast.arg) -> None:
