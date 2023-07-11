@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from functools import partial
 from itertools import chain, zip_longest
 from keyword import iskeyword
-from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, Union
+from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, TypeVar, Union
 
 from flake8 import checker
 from flake8.options.manager import OptionManager
@@ -264,6 +264,16 @@ class LegacyNormalizer(ast.NodeTransformer):
             """
             self.generic_visit(node)
             return node.value
+
+
+_AST_T = TypeVar("_AST_T", bound=ast.AST)
+
+
+def node_with_changes(original: _AST_T, **changes: Any) -> _AST_T:
+    new = deepcopy(original)
+    for attrname, value in changes.items():
+        setattr(new, attrname, value)
+    return new
 
 
 def _ast_node_for(string: str) -> ast.AST:
@@ -1358,13 +1368,12 @@ class PyiVisitor(ast.NodeVisitor):
     def _Y090_error(self, node: ast.Subscript) -> None:
         current_code = unparse(node)
         typ = unparse(node.slice)
-        copied_node = deepcopy(node)
-        new_slice = ast.Tuple(elts=[copied_node.slice, ast.Constant(...)])
-        if sys.version_info >= (3, 9):
-            copied_node.slice = new_slice
-        else:
-            copied_node.slice = ast.Index(new_slice)
-        suggestion = unparse(copied_node)
+        new_slice = ast.Tuple(elts=[node.slice, ast.Constant(...)])
+        corrected_node = node_with_changes(
+            node,
+            slice=(new_slice if sys.version_info >= (3, 9) else ast.Index(new_slice))
+        )
+        suggestion = unparse(corrected_node)
         self.error(node, Y090.format(original=current_code, typ=typ, new=suggestion))
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
@@ -1683,9 +1692,9 @@ class PyiVisitor(ast.NodeVisitor):
         self, node: ast.FunctionDef | ast.AsyncFunctionDef, cls_name: str
     ) -> None:
         method_name = node.name
-        copied_node = deepcopy(node)
-        copied_node.decorator_list.clear()
-        copied_node.returns = ast.Name(id="Self")
+        corrected_node = node_with_changes(
+            node, decorator_list=[], returns=ast.Name("Self")
+        )
         if method_name == "__new__":
             referrer = '"__new__" methods'
         else:
@@ -1693,7 +1702,7 @@ class PyiVisitor(ast.NodeVisitor):
         error_message = Y034.format(
             methods=referrer,
             method_name=f"{cls_name}.{method_name}",
-            suggested_syntax=_unparse_func_node(copied_node),
+            suggested_syntax=_unparse_func_node(corrected_node),
         )
         self.error(node, error_message)
 
@@ -1780,8 +1789,7 @@ class PyiVisitor(ast.NodeVisitor):
     def _Y019_error(
         self, node: ast.FunctionDef | ast.AsyncFunctionDef, typevar_name: str
     ) -> None:
-        cleaned_method = deepcopy(node)
-        cleaned_method.decorator_list.clear()
+        cleaned_method = node_with_changes(node, decorator_list=[])
         if sys.version_info >= (3, 12):
             cleaned_method.type_params = [
                 param
