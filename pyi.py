@@ -343,6 +343,8 @@ _is_AsyncIterable = partial(
 _is_Protocol = partial(_is_object, name="Protocol", from_=_TYPING_MODULES)
 _is_NoReturn = partial(_is_object, name="NoReturn", from_=_TYPING_MODULES)
 _is_Final = partial(_is_object, name="Final", from_=_TYPING_MODULES)
+_is_bool = partial(_is_object, name="bool", from_={"builtins"})
+_is_staticmethod = partial(_is_object, name="staticmethod", from_={"builtins"})
 
 
 def _is_object_or_Unused(node: ast.expr | None) -> bool:
@@ -350,7 +352,7 @@ def _is_object_or_Unused(node: ast.expr | None) -> bool:
 
 
 def _get_name_of_class_if_from_modules(
-    classnode: ast.expr, *, modules: Container[str]
+    classnode: ast.expr | None, *, modules: Container[str]
 ) -> str | None:
     """
     If `classnode` is an `ast.Name`, return `classnode.id`.
@@ -1886,6 +1888,38 @@ class PyiVisitor(ast.NodeVisitor):
                 return_annotation=return_annotation,
             )
 
+    def _check_for_Y092(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        if not (re.match(r"_?is_?[a-zA-Z0-9]+", node.name) and _is_bool(node.returns)):
+            return
+
+        non_kw_only_args = node.args.posonlyargs + node.args.args
+        is_decorated_with_staticmethod = any(
+            _is_staticmethod(decorator) for decorator in node.decorator_list
+        )
+
+        if len(non_kw_only_args) == 0:
+            return
+
+        if (
+            len(non_kw_only_args) == 1
+            and self.in_class.active
+            and not is_decorated_with_staticmethod
+        ):
+            return
+
+        if self.in_class.active:
+            first_pos_arg_index = 0 if is_decorated_with_staticmethod else 1
+        else:
+            first_pos_arg_index = 0
+
+        first_pos_arg_annotation = _get_name_of_class_if_from_modules(
+            non_kw_only_args[first_pos_arg_index].annotation,
+            modules=_TYPING_MODULES | {"builtins"},
+        )
+
+        if first_pos_arg_annotation in {"object", "Any"}:
+            self.error(node, Y092.format(func=node.name))
+
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         with self.in_function.enabled():
             self.generic_visit(node)
@@ -1909,6 +1943,8 @@ class PyiVisitor(ast.NodeVisitor):
 
         if self.in_class.active:
             self.check_self_typevars(node)
+
+        self._check_for_Y092(node)
 
     def visit_arg(self, node: ast.arg) -> None:
         if _is_NoReturn(node.annotation):
@@ -1938,6 +1974,7 @@ class PyiVisitor(ast.NodeVisitor):
             self.error(default, (Y014 if arg.annotation is None else Y011))
 
     def error(self, node: ast.AST, message: str) -> None:
+        assert message.startswith("Y0")
         self.errors.append(Error(node.lineno, node.col_offset, message, PyiTreeChecker))
 
     def _check_for_unused_things(self) -> None:
@@ -2129,5 +2166,9 @@ Y090 = (
     '"a tuple of length 1, in which the sole element is of type {typ!r}". '
     'Perhaps you meant "{new}"?'
 )
+Y092 = (
+    'Y092 Consider using "typing_extensions.TypeGuard" '
+    'as the return annotation for "{func}"'
+)
 
-DISABLED_BY_DEFAULT = ["Y090"]
+DISABLED_BY_DEFAULT = ["Y090", "Y092"]
